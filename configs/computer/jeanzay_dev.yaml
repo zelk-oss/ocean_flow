@@ -1,0 +1,44 @@
+# @package _global_
+
+defaults:
+  - override /hydra/launcher: submitit_slurm
+
+hydra:
+  launcher:
+    timeout_min: 60
+    gpus_per_node: 1
+    tasks_per_node: 1
+    gres: "gpu:1"
+    constraint: a100
+    partition: gpu_p5
+    cpus_per_task: 16
+    gpus_per_task: 1
+    qos: qos_gpu_a100-dev
+    additional_parameters:
+      account: ${oc.env:IDRPROJ}@a100
+      distribution: "block:block"
+      hint: nomultithread
+      time: "00:30:00"
+      mail-type: FAIL
+      mail-user: chiara.zelco@ens.psl.eu
+      signal: "SIGUSR1@120"
+    setup:
+      - "export WANDB_MODE=offline"
+      - "export PATH='~/.local/bin':$PATH"
+      - "set -x"
+    stderr_to_stdout: true
+
+logger:
+  offline: true
+  log_model: false
+  mode: "offline"
+
+num_workers: 8
+
+trainer:
+  accelerator: gpu
+  precision: "bf16-mixed"
+
+callbacks:
+  tqdm_pbar:
+    refresh_rate: 100

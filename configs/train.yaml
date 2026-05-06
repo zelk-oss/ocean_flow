@@ -1,0 +1,41 @@
+defaults:
+  - hydra: default
+  - trainer: default
+  - callbacks:
+      - learning_rate_monitor
+      - model_checkpoint_best
+      - model_checkpoint_last
+      - model_checkpoint_step
+      - rich
+      - tqdm
+  - logger: wandb
+  - data: ???
+  - pre_pipeline: ???
+  - post_pipeline: ???
+  - network: ???
+  - train_module: ???
+  - _self_
+
+exp_name: ${now:%Y-%m-%d}_${now:%H-%M-%S}
+logging_level: DEBUG
+seed: 0
+num_workers: 8
+batch_size: 16
+
+# To resume training from a checkpoint path
+ckpt_path: null
+
+# Set to true to enable torch.compile (may not be compatible with all models or hardware)
+compile: false
+
+# Overwrite network and pipeline configuration to use config groups
+train_module:
+  network: ${network}
+  pre_pipeline: ${pre_pipeline}
+  post_pipeline: ${post_pipeline}
+
+# Set logger tags
+logger:
+  tags:
+    - surrogate
+    - train

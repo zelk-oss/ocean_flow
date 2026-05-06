@@ -1,0 +1,38 @@
+# core dependencies
+torch           # install with the appropriate CUDA index URL
+torchvision
+torchaudio
+lightning
+hydra-core
+hydra-submitit-launcher  # For jean-Zay cluster job submission
+omegaconf
+wandb
+gcsfs
+
+# data / scientific
+numpy
+pandas
+xarray
+netcdf4
+zarr<3
+tensorstore
+einops
+scipy
+tqdm
+rich
+
+# distributed
+dask
+distributed
+
+# (optional) fast attention implementation
+#flash-attn           # only if you want to enable USE_FLASH_ATTN
+
+# testing (also useful for development)
+pytest
+pytest_cov
+
+# for building documentation
+sphinx
+sphinx_rtd_theme
+sphinx-autodoc-typehints

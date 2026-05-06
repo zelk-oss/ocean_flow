@@ -1,0 +1,24 @@
+# ReadTheDocs configuration for Ocean Flow Matching
+
+version: 2
+
+# Build documentation with Sphinx using the configuration file in docs/
+
+sphinx:
+  configuration: docs/conf.py
+
+# Use conda environment from environment.yml (already present in repo)
+conda:
+  environment: environment.yml
+
+# Install the package so autodoc can import it
+python:
+  install:
+    - method: pip
+      path: .
+
+# Optionally build with pip if conda is not desired
+#python:
+#  install:
+#    - requirements: requirements.txt
+#    - path: .
