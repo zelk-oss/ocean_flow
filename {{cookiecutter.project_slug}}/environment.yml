@@ -1,0 +1,10 @@
+name: {{cookiecutter.project_slug}}
+channels:
+  - defaults
+
+dependencies:
+  - python<3.13
+  - pip
+  - setuptools
+  - pip:
+    - uv

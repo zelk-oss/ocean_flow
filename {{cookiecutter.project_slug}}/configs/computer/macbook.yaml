@@ -1,0 +1,20 @@
+# @package _global_
+trainer:
+  accelerator: "mps"
+  devices: 1
+  fast_dev_run: 100
+
+data:
+  pin_memory: false
+  val_batch_size: 1
+
+logger:
+  mode: "disabled"
+
+network:
+  n_blocks: 1
+  n_features: 64
+
+batch_size: 2
+num_workers: 2
+compile: false
