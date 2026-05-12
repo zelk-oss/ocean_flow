@@ -1,6 +1,6 @@
 # COPIED FROM THE AMAZING LUCIDRAINS https://github.com/lucidrains/denoising-diffusion-pytorch/blob/main/denoising_diffusion_pytorch/guided_diffusion.py
 """
-Unet used in the follmer process repo for forecast model training 
+Unet used in the follmer process repo for forecast model training. uses attention. 
 """
 
 import math
