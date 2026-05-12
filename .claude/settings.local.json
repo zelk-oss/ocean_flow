@@ -1,0 +1,82 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(python:*)",
+      "Bash(gh issue:*)",
+      "Bash(conda run:*)",
+      "Bash(git add:*)",
+      "Read(//Users/tfinn/.claude/skills/skill-creator/**)",
+      "Read(//Users/tfinn/.claude/skills/**)",
+      "Bash(gh --version)",
+      "Bash(mkdir -p /Users/tfinn/.claude/skills/post-pr-comment/scripts)",
+      "Bash(mkdir -p /Users/tfinn/.claude/skills/post-pr-comment/evals)",
+      "Bash(gh pr:*)",
+      "Bash(bash /Users/tfinn/.claude/skills/post-pr-comment/scripts/post_comment.sh 99 \"LGTM! Merging after CI passes.\")",
+      "Bash(echo \"EXIT:$?\")",
+      "Bash(bash /Users/tfinn/.claude/skills/post-pr-comment/scripts/post_comment.sh 9999 \"This change breaks backward compatibility. Please update the changelog.\")",
+      "Bash(curl -s http://localhost:8080)",
+      "Bash(curl -s http://localhost:5000)",
+      "Bash(curl -s http://localhost:8000)",
+      "Bash(python3 -c \"import socket; s=socket.socket\\(\\); s.connect\\(\\(''''localhost'''', 9090\\)\\); s.close\\(\\); print\\(''''9090 open''''\\)\")",
+      "Read(//private/etc/**)",
+      "Bash(python3 -c \"import socket; print\\(socket.getservbyname\\(''''mctet-jserv'''', ''''tcp''''\\)\\)\")",
+      "Bash(kill 59808)",
+      "Bash(bash -n /Users/tfinn/Projects/surrogate-template/{{cookiecutter.project_slug}}/scripts/sync-template.sh)",
+      "Bash(ls:*)",
+      "Bash(find /Users/tfinn/Projects/surrogate-template/'{{cookiecutter.project_slug}}'/tests -name \"*.py\")",
+      "Bash(cat \"{{cookiecutter.project_slug}}/.claude/agents/test-writer.md\")",
+      "Bash(cat \"{{cookiecutter.project_slug}}/.claude/agents/plan-dev.md\")",
+      "Bash(chmod +x /Users/tfinn/Projects/surrogate-template/.claude/hooks/cookiecutter_pre.sh /Users/tfinn/Projects/surrogate-template/.claude/hooks/cookiecutter_post.sh)",
+      "Bash(command -v cookiecutter)",
+      "Bash(.claude/hooks/cookiecutter_pre.sh)",
+      "Bash(.claude/hooks/cookiecutter_post.sh)",
+      "Read(//private/tmp/surrogate-template-render/**)",
+      "Read(//private/tmp/**)",
+      "Read(//tmp/**)"
+    ]
+  },
+  "hooks": {
+    "PreToolUse": [
+      {
+        "matcher": "Bash(python*)",
+        "hooks": [
+          {
+            "type": "command",
+            "command": ".claude/hooks/cookiecutter_pre.sh",
+            "timeout": 60
+          }
+        ]
+      },
+      {
+        "matcher": "Bash(pytest*)",
+        "hooks": [
+          {
+            "type": "command",
+            "command": ".claude/hooks/cookiecutter_pre.sh",
+            "timeout": 60
+          }
+        ]
+      }
+    ],
+    "PostToolUse": [
+      {
+        "matcher": "Bash(python*)",
+        "hooks": [
+          {
+            "type": "command",
+            "command": ".claude/hooks/cookiecutter_post.sh"
+          }
+        ]
+      },
+      {
+        "matcher": "Bash(pytest*)",
+        "hooks": [
+          {
+            "type": "command",
+            "command": ".claude/hooks/cookiecutter_post.sh"
+          }
+        ]
+      }
+    ]
+  }
+}

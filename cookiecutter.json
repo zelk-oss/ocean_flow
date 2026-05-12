@@ -1,0 +1,14 @@
+{
+  "project_name": "Cool Surrogate Project",
+  "project_slug": "{{ cookiecutter.project_name | lower | replace(' ', '_') | replace('-', '_') }}",
+  "project_year": "2026",
+  "start_version": "0.1",
+  "author_name": "Anonymous",
+  "author_email": "anonymous@example.com",
+  "description": "Surrogate modelling with PyTorch made easy.",
+  "template_repo": "git@github.com:tobifinn/surrogate-template.git",
+  "template_branch": "main",
+  "_copy_without_render": [
+    ".github/workflows/check-template-updates.yml"
+  ]
+}

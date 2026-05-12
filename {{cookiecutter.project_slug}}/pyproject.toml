@@ -1,0 +1,13 @@
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "--cov={{cookiecutter.project_slug}} --cov-report=term-missing --cov-fail-under=100"
+
+[tool.coverage.run]
+branch = true          # catches untested if/else branches, not just lines
+
+[tool.coverage.report]
+exclude_lines = [
+    "pragma: no cover",      # explicit opt-out for e.g. abstract methods
+    "raise NotImplementedError",
+    "if TYPE_CHECKING:",
+]
