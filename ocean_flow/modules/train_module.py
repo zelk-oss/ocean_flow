@@ -22,7 +22,13 @@ from ocean_flow.pipelines import PrePipeline, PostPipeline
 main_logger = logging.getLogger(__name__)
 
 
+# Flow Matching module 
 class TrainingModule(pl.LightningModule):
+    """
+    Flow-matching training module for residual prediction.
+    Trains the network to predict the velocity field (residual - noise)
+    from an intermediate interpolated state.
+    """
     r'''
     Base class for training modules. All training modules must
     inherit from this class and implement the required methods.
@@ -317,28 +323,49 @@ class TrainingModule(pl.LightningModule):
             batch: Dict[str, Any],
             prefix: str = "train"
     ) -> Dict[str, Any]:
-        r'''
-        Abstract method to estimate the loss for a given batch of data. This is
-        the main method to implement the training logic.
+        # batch is expected to contain:
+        #   "input":    normalized state s_t,   shape (B, 1, H, W)
+        #   "residual": normalized s_{t+dt} - s_t, shape (B, 1, H, W)
+        batch_in  = batch["input"]
+        batch_res = batch["residual"]
 
-        Parameters
-        ----------
-        batch : Dict[str, Any]
-            A batch of data containing `state_surface`, `state_levels`, and
-            `forcings` tensors.
-        prefix : str, optional
-            A prefix for logging purposes, by default "train".
+        # Sample noise and pseudo-time (flow matching schedule)
+        noise = torch.randn_like(batch_res)
 
-        Returns
-        -------
-        Dict[str, Any]
-            A dictionary containing the computed `loss` and any additional
-            metrics.
-        '''
-        raise NotImplementedError(
-            "The estimate_loss method must be implemented in the "
-            "TrainingModule subclass."
+        pseudo_time = torch.linspace(
+            0, 1, batch_res.shape[0],
+            device=batch_res.device, dtype=batch_res.dtype
         )
+        time_shift = torch.rand(
+            1, device=batch_res.device, dtype=batch_res.dtype
+        )
+        pseudo_time = (pseudo_time + time_shift) % 1
+        pseudo_time_4d = pseudo_time.view(-1, 1, 1, 1)
+
+        # Interpolate between noise and target residual
+        intermediate_state = (
+            pseudo_time_4d * batch_res
+            + (1 - pseudo_time_4d) * noise
+        )
+        target_velocity = batch_res - noise
+
+        # Network input: concat intermediate state with conditioning
+        input_tensor = torch.cat((intermediate_state, batch_in), dim=1)
+
+        # Forward pass through the network (pre/post pipelines handled outside
+        # or you can call self.pre_pipeline / self.post_pipeline here)
+        prediction = self.network(input_tensor, pseudo_time)
+
+        # MSE loss on velocity field
+        loss = (prediction - target_velocity).pow(2).mean()
+
+        self.log(
+            f"{prefix}/loss", loss,
+            on_step=True, on_epoch=True,
+            prog_bar=True, sync_dist=True
+        )
+
+        return {"loss": loss}
 
     def estimate_auxiliary_losses(
             self,

@@ -9,18 +9,18 @@ defaults:
       - rich
       - tqdm
   - logger: wandb
-  - data: ???
-  - pre_pipeline: ???
-  - post_pipeline: ???
-  - network: ???
-  - train_module: ???
+  - data: sqg
+  - pre_pipeline: normalization
+  - post_pipeline: normalization
+  - network: unet
+  - train_module: flow_matching
   - _self_
 
-exp_name: ${now:%Y-%m-%d}_${now:%H-%M-%S}
+exp_name: sqg_flow_matching_${now:%H-%M-%S}
 logging_level: DEBUG
-seed: 0
-num_workers: 8
-batch_size: 16
+seed: 42
+num_workers: 4
+batch_size: 32
 
 # To resume training from a checkpoint path
 ckpt_path: null
@@ -39,3 +39,5 @@ logger:
   tags:
     - surrogate
     - train
+    - flow-matching 
+    - sqg

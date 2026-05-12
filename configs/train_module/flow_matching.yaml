@@ -1,0 +1,6 @@
+_target_: project.training.TrainingModule
+lr: 3e-4
+lr_warmup_steps: 1000
+total_steps: 50000
+weight_decay: 0.0
+ema_rate: 0.9999

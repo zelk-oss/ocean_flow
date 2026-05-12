@@ -1,0 +1,13 @@
+# configs/network/unet.yaml
+_target_: project.networks.unet.Unet
+in_channels: 2
+out_channels: 1
+dim: 64
+dim_mults: [1, 2, 2, 2]
+resnet_block_groups: 8
+learned_sinusoidal_cond: true
+random_fourier_features: false
+learned_sinusoidal_dim: 32
+attn_dim_head: 64
+attn_heads: 4
+use_classes: false
