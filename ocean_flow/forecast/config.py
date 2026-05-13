@@ -135,7 +135,7 @@ def generate_forecast_configs(
     )
     n_total = _total_init_ens_pairs(cfg)
     local_batch_size = max(
-        1, cfg.batch_size // dp_world_size
+        1, cfg.dataloader.batch_size // dp_world_size
     )
 
     for i in range(0, n_total, local_batch_size):

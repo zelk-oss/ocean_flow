@@ -14,7 +14,7 @@ train_module:
 
 # Data loader settings
 data:
-  batch_size: 16
+  batch_size: 32
   val_batch_size: 4
   n_workers: 8
 

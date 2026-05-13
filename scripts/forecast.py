@@ -129,9 +129,9 @@ def _run_global_phase(
             lead_times=lead_times,
             ens_mems=ens_mems,
         )
-        forecast_configs = generate_forecast_configs(
+        forecast_configs = list(generate_forecast_configs(
             cfg, dp_world_size=n_dp_workers,
-        )
+        ))
         written_regions = check_written_regions(
             cfg.io.store_path,
             cfg.io.state_variables,
@@ -160,9 +160,9 @@ def _run_global_phase(
             n_store_freq=cfg.n_store_freq,
             recreate=cfg.io.recreate_store,
         )
-        forecast_configs = generate_forecast_configs(
+        forecast_configs = list(generate_forecast_configs(
             cfg, dp_world_size=n_dp_workers,
-        )
+        ))
 
     validate_dask_addresses(
         cfg.dask.scheduler,

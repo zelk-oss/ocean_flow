@@ -11,6 +11,8 @@ dataloader:
   batch_size: 4
   num_workers: 0
 
+batch_size: ${dataloader.batch_size}  # Alias required by forecast config generation
+
 # IO configuration
 io:
   data_path: '${data.data_path}/test.zarr'  # Path to reference zarr store
@@ -40,11 +42,11 @@ ckpt_path: "data/models/${exp_name}/best.ckpt" # Path to model checkpoint for fo
 load_ema: false  # Load EMA network weights from training checkpoint
 
 # Forecast initialization and lead time configuration
-init_start: ???  # Forecast initialization start date
-init_end: ???  # Forecast initialization end date
-init_freq: "1D"  # Frequency of initialization times (e.g., '1D', '6h')
-lead_time: "35D"  # Maximum lead time (e.g., '10D')
-step_freq: "7D"  # Frequency of forecast steps (e.g., '6h')
+init_start: 0  # Forecast initialization start date
+init_end: 10  # Forecast initialization end date
+init_freq: 1  # Frequency of initialization times (e.g., '1D', '6h')
+lead_time: 35  # Maximum lead time (e.g., '10D')
+step_freq: 7  # Frequency of forecast steps (e.g., '6h')
 
 # Note: n_in_steps + n_out_steps should be = data.n_steps
 n_in_steps: 1 # Number of input steps for the model
