@@ -1,0 +1,12 @@
+# configs/pipeline/post_tendency_q.yaml
+# to_latent normalizes the residual for loss computation
+# forward denormalizes the prediction and adds it back to s_t
+_target_: ocean_flow.pipelines.PostPipeline
+states_surface:
+  _target_: ocean_flow.pipelines.tendency.TendencyPrediction
+  std: [7.557280e-02]
+  add_dims: [1, 2]
+states_levels:
+  _target_: ocean_flow.pipelines.tendency.TendencyPrediction
+  std: [7.557280e-02]
+  add_dims: [1, 2]

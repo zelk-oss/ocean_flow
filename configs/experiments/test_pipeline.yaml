@@ -1,0 +1,17 @@
+# @package _global_
+
+# A minimal test experiment for verifying the pipeline locally.
+exp_name: test_pipeline
+batch_size: 32
+num_workers: 0
+compile: false
+
+# Optional quick local trainer settings; you can override these at runtime.
+trainer:
+  max_epochs: 20
+  accelerator: cpu
+  devices: 1
+
+# Disable W&B logging for a fast local sanity check.
+logger:
+  mode: disabled

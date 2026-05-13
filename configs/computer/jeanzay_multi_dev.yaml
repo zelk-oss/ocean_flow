@@ -14,7 +14,7 @@ hydra:
     cpus_per_task: 16
     qos: qos_gpu_a100-dev
     additional_parameters:
-      account: ${oc.env:IDRPROJ}@a100
+      account: ${oc.env:IDRPROJ}#a100
       distribution: "block:block"
       hint: nomultithread
       time: "00:30:00"

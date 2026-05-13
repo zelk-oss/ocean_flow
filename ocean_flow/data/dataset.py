@@ -477,6 +477,33 @@ class TrainDataset(Dataset):
         }
         return sample
 
+    def _assemble_training_sample(
+            self,
+            sample: Dict[str, np.ndarray]
+    ) -> Dict[str, np.ndarray]:
+        r'''
+        Convert raw state samples to training inputs and residual targets.
+
+        The training module expects each batch to contain ``input`` and
+        ``residual`` keys. ``input`` is the state at the first time step,
+        and ``residual`` is the change to the last time step.
+        '''
+        if self.state_variables:
+            input_parts = []
+            residual_parts = []
+            for state_var in self.state_variables:
+                state_series = sample[state_var]
+                state_t = state_series[0]
+                state_tdt = state_series[-1]
+                if state_t.ndim == 2:
+                    state_t = state_t[None, ...]
+                    state_tdt = state_tdt[None, ...]
+                input_parts.append(state_t)
+                residual_parts.append(state_tdt - state_t)
+            sample["input"] = np.concatenate(input_parts, axis=0)
+            sample["residual"] = np.concatenate(residual_parts, axis=0)
+        return sample
+
     def __getitem__(
             self, idx: int
     ) -> Dict[str, np.ndarray]:
@@ -513,4 +540,5 @@ class TrainDataset(Dataset):
         sample = self._get_data_sample(time_slice, ens_idx)
         sample.update(self._auxiliary_arrays)
         sample["time"] = self.time_array[time_slice]
+        sample = self._assemble_training_sample(sample)
         return sample

@@ -1,0 +1,34 @@
+# @package _global_
+# Serious flow-matching experiment for GPU training on ocean_flow.
+# Use this config with `+experiment=flow_matching_serious`.
+
+exp_name: sqg_flow_matching_serious_${now:%Y-%m-%d_%H-%M-%S}
+compile: false
+
+# Training hyperparameters
+train_module:
+  lr: 3e-4
+  lr_warmup_steps: 5000
+  total_steps: 200000
+  weight_decay: 1e-6
+
+# Data loader settings
+data:
+  batch_size: 16
+  val_batch_size: 4
+  n_workers: 8
+
+# Trainer runtime settings
+trainer:
+  accelerator: gpu
+  devices: 1
+  precision: 32-true
+  max_epochs: -1
+  max_steps: 200000
+
+# Optional metadata for logging and bookkeeping
+logger:
+  tags:
+    - serious
+    - flow-matching
+    - sqg

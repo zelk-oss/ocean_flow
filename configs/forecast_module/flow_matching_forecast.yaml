@@ -1,0 +1,9 @@
+# configs/forecast_module/flow_matching.yaml
+_target_: ocean_flow.modules.forecast_module.FlowMatchingForecastModule
+
+n_int: 20
+n_ensemble: 16
+
+network: unet
+pre_pipeline: pre_normalize_q.yaml
+post_pipeline: post_tendency_q.yaml

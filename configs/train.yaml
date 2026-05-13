@@ -10,8 +10,8 @@ defaults:
       - tqdm
   - logger: wandb
   - data: sqg
-  - pre_pipeline: normalization
-  - post_pipeline: normalization
+  - pre_pipeline: pre_normalize_q.yaml
+  - post_pipeline: post_tendency_q.yaml
   - network: unet
   - train_module: flow_matching
   - _self_

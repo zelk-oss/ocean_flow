@@ -1,5 +1,6 @@
 # configs/network/unet.yaml
-_target_: project.networks.unet.Unet
+_target_: ocean_flow.networks.unet.Unet
+num_classes: 1        # unused because use_classes: false
 in_channels: 2
 out_channels: 1
 dim: 64

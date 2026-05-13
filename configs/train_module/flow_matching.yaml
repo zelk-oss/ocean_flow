@@ -1,4 +1,4 @@
-_target_: project.training.TrainingModule
+_target_: ocean_flow.modules.train_module.TrainingModule
 lr: 3e-4
 lr_warmup_steps: 1000
 total_steps: 50000

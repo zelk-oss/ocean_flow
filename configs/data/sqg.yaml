@@ -1,7 +1,9 @@
-_target_: project.data.PyQGDataModule
-zarr_paths:
-  - /lustre/fsn1/projects/rech/wbg/ukv59en/simu_pyqg_512_3_run0_second_moreflush.zarr
-  - /lustre/fsn1/projects/rech/wbg/ukv59en/simu_pyqg_512_3_run1_second_moreflush.zarr
-  - /lustre/fsn1/projects/rech/wbg/ukv59en/simu_pyqg_512_3_run2_second_moreflush.zarr
-dt: 7          # your decorrelation time
-target_size: 64
+_target_: ocean_flow.data.TrainDataModule
+data_path: /lustre/fsn1/projects/rech/wbg/ukv59en/ocean_flow_data/data
+state_variables:
+  - q
+forcing_variables: []
+n_steps: 2
+n_step_size: 7
+batch_size: 2
+val_batch_size: 1
