@@ -11,8 +11,6 @@ dataloader:
   batch_size: 4
   num_workers: 0
 
-batch_size: ${dataloader.batch_size}  # Alias required by forecast config generation
-
 # IO configuration
 io:
   data_path: '${data.data_path}/test.zarr'  # Path to reference zarr store

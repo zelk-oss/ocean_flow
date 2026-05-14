@@ -1,7 +1,7 @@
 # @package _global_
 
 # A minimal test experiment for verifying the pipeline locally.
-exp_name: test_pipeline
+exp_name: check_pipeline
 batch_size: 32
 num_workers: 0
 compile: false

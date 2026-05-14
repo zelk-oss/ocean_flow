@@ -44,11 +44,13 @@ def _total_init_ens_pairs(cfg: DictConfig) -> int:
     int
         Number of init-time x ensemble-member pairs.
     '''
+
     init_times = pd.date_range(
         start=cfg.init_start,
         end=cfg.init_end,
         freq=cfg.init_freq,
     )
+
     return len(init_times) * cfg.ensemble_size
 
 
@@ -117,6 +119,7 @@ def generate_forecast_configs(
     ForecastConfig
         A ForecastConfig for each batch of forecasts.
     '''
+
     init_times = pd.date_range(
         start=cfg.init_start,
         end=cfg.init_end,
@@ -127,6 +130,7 @@ def generate_forecast_configs(
         end=cfg.lead_time,
         freq=cfg.step_freq
     )
+
     ensemble_members = np.arange(cfg.ensemble_size)
 
     # Cartesian product, init-times-major order

@@ -117,6 +117,7 @@ def _run_global_phase(
         end=cfg.lead_time,
         freq=cfg.step_freq,
     )
+
     ens_mems = np.arange(cfg.ensemble_size)
 
     if cfg.io.restart and os.path.exists(
