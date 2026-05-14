@@ -170,9 +170,17 @@ def initialize_io(
         n_in_steps=cfg.get("n_in_steps", 1),
         step_freq=cfg.get("step_freq", None),
     )
-    # AFTER
-    init_times = np.arange(cfg.init_start, cfg.init_end + 1, cfg.init_freq)
-    lead_times = np.arange(cfg.step_freq, cfg.lead_time + 1, cfg.step_freq)
+    
+    init_times = pd.date_range(
+        start=cfg.init_start,
+        end=cfg.init_end,
+        freq=cfg.init_freq,
+    )
+    lead_times = pd.timedelta_range(
+        start=cfg.step_freq,
+        end=cfg.lead_time,
+        freq=cfg.step_freq,
+    )
 
     ensemble_members = np.arange(cfg.ensemble_size)
     output_writer = OutputWriter(
