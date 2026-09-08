@@ -1,0 +1,126 @@
+trainer:
+  _target_: lightning.pytorch.Trainer
+  enable_checkpointing: true
+  accelerator: cpu
+  max_epochs: 20
+  max_steps: 1000000
+  benchmark: true
+  deterministic: false
+  default_root_dir: data/models/${exp_name}
+  devices: 1
+callbacks:
+  learning_rate_monitor:
+    _target_: lightning.pytorch.callbacks.LearningRateMonitor
+  model_checkpoint_best:
+    _target_: lightning.pytorch.callbacks.ModelCheckpoint
+    dirpath: data/models/${exp_name}
+    filename: best
+    auto_insert_metric_name: false
+    save_top_k: 1
+    monitor: val/loss
+    save_last: false
+    save_weights_only: false
+  model_checkpoint_last:
+    _target_: lightning.pytorch.callbacks.ModelCheckpoint
+    dirpath: data/models/${exp_name}
+    filename: last
+    auto_insert_metric_name: false
+    save_top_k: 1
+    save_on_train_epoch_end: true
+    monitor: null
+    every_n_epochs: 1
+    save_last: true
+    save_weights_only: false
+  model_checkpoint_step:
+    _target_: lightning.pytorch.callbacks.ModelCheckpoint
+    dirpath: data/models/${exp_name}
+    filename: step_{step:05d}
+    auto_insert_metric_name: false
+    save_top_k: -1
+    monitor: null
+    every_n_train_steps: 10000
+    save_last: false
+    save_weights_only: true
+  model_summary:
+    _target_: lightning.pytorch.callbacks.RichModelSummary
+    max_depth: 3
+  tqdm_pbar:
+    _target_: lightning.pytorch.callbacks.TQDMProgressBar
+    refresh_rate: 1
+logger:
+  _target_: lightning.pytorch.loggers.WandbLogger
+  project: ocean_flow
+  save_dir: data
+  name: ${exp_name}
+  log_model: false
+  tags:
+  - surrogate
+  - train
+  - flow-matching
+  - sqg
+  mode: disabled
+data:
+  _target_: ocean_flow.modules.data.FlowMatchingTrainDataModule
+  data_path: /lustre/fsn1/projects/rech/wbg/ukv59en/ocean_flow_data/data
+  state_variables:
+  - q
+  forcing_variables: []
+  n_steps: 2
+  n_step_size: 7
+  batch_size: 32
+  val_batch_size: 1
+pre_pipeline:
+  _target_: flow_core.pre_processing.PrePipeline
+  normalize_q:
+    _target_: flow_core.pre_processing.normalization.PreNormalization
+    mean:
+    - -7.468396e-21
+    std:
+    - 0.2937441
+    add_dims:
+    - 1
+    - 2
+post_pipeline:
+  _target_: flow_core.post_processing.PostPipeline
+  tendency_q:
+    _target_: flow_core.post_processing.tendency.TendencyPrediction
+    std:
+    - 0.0755728
+    add_dims:
+    - 1
+    - 2
+network:
+  _target_: ocean_flow.networks.unet.Unet
+  num_classes: 1
+  in_channels: 2
+  out_channels: 1
+  dim: 64
+  dim_mults:
+  - 1
+  - 2
+  - 2
+  - 2
+  resnet_block_groups: 8
+  learned_sinusoidal_cond: true
+  random_fourier_features: false
+  learned_sinusoidal_dim: 32
+  attn_dim_head: 64
+  attn_heads: 4
+  use_classes: false
+train_module:
+  _target_: ocean_flow.modules.training.FlowMatchingTrainingModule
+  lr: 0.0003
+  lr_warmup_steps: 1000
+  total_steps: 50000
+  weight_decay: 0.0
+  ema_rate: 0.9999
+  network: ${network}
+  pre_pipeline: ${pre_pipeline}
+  post_pipeline: ${post_pipeline}
+exp_name: check_pipeline
+logging_level: DEBUG
+seed: 42
+num_workers: 0
+batch_size: 32
+ckpt_path: null
+compile: false

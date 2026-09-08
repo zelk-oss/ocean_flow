@@ -53,7 +53,7 @@ VARIABLE = "q"
 # Variables to ignore completely when opening source zarrs.
 DROP_VARIABLES = ["u", "v"]
 
-OUT_DIR   = Path("/lustre/fsn1/projects/rech/wbg/ukv59en/ocean_flow_data1/data")
+OUT_DIR   = Path("/lustre/fsn1/projects/rech/wbg/ukv59en/ocean_flow_data/data")
 OUT_TRAIN = OUT_DIR / "train.zarr"
 OUT_VAL   = OUT_DIR / "val.zarr"
 OUT_TEST  = OUT_DIR / "test.zarr"
