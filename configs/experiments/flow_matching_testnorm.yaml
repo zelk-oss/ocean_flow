@@ -2,9 +2,9 @@
 # Serious flow-matching experiment for GPU training on ocean_flow.
 # Use this config with `+experiment=flow_matching_serious`.
 
-exp_name: sqg_flow_matching_serious
-compile: true
-total_steps: 1000000
+exp_name: sqg_flow_matching_testnorm
+compile: false
+total_steps: 500000
 
 # Training hyperparameters
 train_module:
@@ -15,15 +15,15 @@ train_module:
 
 # Data loader settings
 data:
-  batch_size: 16
-  val_batch_size: 8
+  batch_size: 8
+  val_batch_size: 4
   n_workers: 8
 
 # Trainer runtime settings
 trainer:
   accelerator: gpu
   devices: 1
-  precision: bf16-mixed
+  precision: 32-true
   max_epochs: -1
   max_steps: ${total_steps}
 

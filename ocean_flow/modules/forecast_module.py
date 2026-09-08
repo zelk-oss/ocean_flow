@@ -168,33 +168,29 @@ class FlowMatchingForecastModule(ForecastModule):
             Sampled normalized residual with the same shape as ``condition``.
         """
 
-        input_has_ensemble_dim = condition.ndim == 5
-
         if condition.ndim == 4:
-            # Input has shape (B, C, H, W).
-            # Add stochastic ensemble dimension.
-            condition = condition.unsqueeze(0).repeat(
-                self.n_ensemble, 1, 1, 1, 1
-            )
+            B, C, H, W = condition.shape
+            flat_condition = condition
+            dynamics = torch.randn_like(flat_condition)
+            n_samples = B
 
-        elif condition.ndim != 5:
+        elif condition.ndim == 5:
+            E, B, C, H, W = condition.shape
+            flat_condition = condition.reshape(E * B, C, H, W)
+            dynamics = torch.randn_like(flat_condition)
+            n_samples = E * B
+
+        else:
             raise ValueError(
                 "Expected condition with shape (B, C, H, W) or "
                 f"(E, B, C, H, W), got shape {tuple(condition.shape)}."
             )
 
-        E, B, C, H, W = condition.shape
-
-        flat_condition = condition.reshape(E * B, C, H, W)
-
-        # Initial sample in residual space: z_0 ~ N(0, I).
-        dynamics = torch.randn_like(flat_condition)
-
         delta_t = 1.0 / self.n_int
 
         for i in range(self.n_int):
             t = torch.full(
-                (E * B,),
+                (n_samples,),
                 i / self.n_int,
                 device=condition.device,
                 dtype=condition.dtype,
@@ -205,13 +201,10 @@ class FlowMatchingForecastModule(ForecastModule):
 
             dynamics = dynamics + delta_t * velocity
 
-        residual = dynamics.reshape(E, B, C, H, W)
+        if condition.ndim == 4:
+            return dynamics.reshape(B, C, H, W)
 
-        if not input_has_ensemble_dim:
-            # Keep ensemble dimension, because the forecast is stochastic.
-            return residual
-
-        return residual
+        return dynamics.reshape(E, B, C, H, W)
 
     def forward(
         self,
@@ -263,34 +256,27 @@ class FlowMatchingForecastModule(ForecastModule):
                 "state and additional keyword arguments."
             )
 
-        input_has_ensemble_dim = state.ndim == 5
-
-        # Normalize the conditioning state.
-        # This replaces:
-        #     norm_state = (state - in_mean) / in_std
-        condition = self.pre_pipeline(state)
-
-        # Sample normalized residual.
-        residual = self.sample_residual_with_flow(condition)
-
-        # Denormalize residual.
-        # This replaces:
-        #     increment_physical = increment * res_std + res_mean
-        residual_physical = self.post_pipeline(residual)
-
-        if state.ndim == 4:
-            # state: (B, C, H, W)
-            # residual_physical: (E, B, C, H, W)
-            state = state.unsqueeze(0).repeat(
-                self.n_ensemble, 1, 1, 1, 1
-            )
-
-        elif state.ndim != 5:
+        if state.ndim not in (4, 5):
             raise ValueError(
                 "Expected state with shape (B, C, H, W) or "
                 f"(E, B, C, H, W), got shape {tuple(state.shape)}."
             )
 
-        next_state = state + residual_physical
+        # Normalize the conditioning state.
+        condition = self.pre_pipeline(state)
+
+        # Sample normalized residual.
+        residual = self.sample_residual_with_flow(condition)
+
+        if state.ndim == 5:
+            E, B, C, H, W = state.shape
+            state = state.reshape(E * B, C, H, W)
+            residual = residual.reshape(E * B, C, H, W)
+
+        # post_pipeline denormalizes the sampled residual and adds it back to state.
+        next_state = self.post_pipeline(residual, state)
+
+        if next_state.ndim == 4:
+            next_state = next_state.unsqueeze(1)
 
         return next_state

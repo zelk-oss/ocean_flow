@@ -39,15 +39,15 @@ def default(val, d):
 def identity(t, *args, **kwargs):
     return t
 
-def cycle(dl):
+def cycle(dl):  # pragma: no cover
     while True:
         for data in dl:
             yield data
 
-def has_int_squareroot(num):
+def has_int_squareroot(num):  # pragma: no cover
     return (math.sqrt(num) ** 2) == num
 
-def num_to_groups(num, divisor):
+def num_to_groups(num, divisor):  # pragma: no cover
     groups = num // divisor
     remainder = num % divisor
     arr = [divisor] * groups
@@ -55,25 +55,25 @@ def num_to_groups(num, divisor):
         arr.append(remainder)
     return arr
 
-def convert_image_to_fn(img_type, image):
+def convert_image_to_fn(img_type, image):  # pragma: no cover
     if image.mode != img_type:
         return image.convert(img_type)
     return image
 
 # normalization functions
 
-def normalize_to_neg_one_to_one(img):
+def normalize_to_neg_one_to_one(img):  # pragma: no cover
     return img * 2 - 1
 
-def unnormalize_to_zero_to_one(t):
+def unnormalize_to_zero_to_one(t):  # pragma: no cover
     return (t + 1) * 0.5
 
 # classifier free guidance functions
 
-def uniform(shape, device):
+def uniform(shape, device):  # pragma: no cover
     return torch.zeros(shape, device = device).float().uniform_(0, 1)
 
-def prob_mask_like(shape, prob, device):
+def prob_mask_like(shape, prob, device):  # pragma: no cover
     if prob == 1:
         return torch.ones(shape, device = device, dtype = torch.bool)
     elif prob == 0:

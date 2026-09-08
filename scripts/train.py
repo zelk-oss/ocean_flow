@@ -39,6 +39,7 @@ def train_task(cfg: DictConfig) -> None:
     data_module: pl.LightningDataModule = instantiate(cfg.data)
     data_module.setup("fit")
 
+
     main_logger.info(f"Instantiating model <{cfg['train_module']._target_}>")
     model: TrainingModule = instantiate(cfg["train_module"])
     model.hparams["batch_size"] = cfg.batch_size

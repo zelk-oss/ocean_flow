@@ -5,5 +5,5 @@ state_variables:
 forcing_variables: []
 n_steps: 2
 n_step_size: 7
-batch_size: 2
+batch_size: 32
 val_batch_size: 1

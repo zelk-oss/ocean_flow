@@ -351,11 +351,12 @@ def create_output_store(
         coords['ensemble'] = ens_array
 
         xr.Dataset(coords=coords).to_zarr(
-            store_path, mode='w',
-            consolidated=False,
+            store_path,
+            mode="w",
+            zarr_version=2,
         )
 
-        store = zarr.open(store_path, mode='a')
+        store = zarr.open_group(store_path, mode="a", zarr_version=2)
         for var in state_variables:
             ref_var = ref_ds[var]
             valid_indices = [

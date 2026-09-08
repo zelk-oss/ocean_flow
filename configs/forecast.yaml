@@ -7,9 +7,8 @@ defaults:
   - forecast_module: flow_matching_forecast
   - _self_
 
-dataloader:
-  batch_size: 4
-  num_workers: 0
+batch_size: 4
+num_workers: 0
 
 # IO configuration
 io:
@@ -50,7 +49,7 @@ step_freq: 7  # Frequency of forecast steps (e.g., '6h')
 n_in_steps: 1 # Number of input steps for the model
 n_out_steps: 1 # Number of output steps to forecast at each iteration
 
-ensemble_size: 4 # Number of ensemble members to forecast
+ensemble_size: 16 # Number of ensemble members to forecast
 
 # Efficiency note:
 # For short-term forecasting, n_out_steps should be lead_time / step_freq to write the full forecast in one step

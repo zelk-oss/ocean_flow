@@ -997,3 +997,57 @@ class TestDatasetEdgeCases:
         )
         samp = ds[2]
         assert samp["states_surface"].shape == (1, 2, 4, 8)
+
+    def test_no_state_variables_skips_input_residual(
+            self,
+            tmp_path: object,
+    ) -> None:
+        r'''No state_variables leaves input/residual keys absent.'''
+        path = str(tmp_path / "t.zarr")
+        _create_test_zarr(path, n_times=3)
+        ds = _make_ds(
+            path,
+            state_variables=[],
+            forcing_variables=["states_surface"],
+            n_steps=2,
+            n_step_size=1,
+        )
+        samp = ds[0]
+        assert "input" not in samp
+        assert "residual" not in samp
+
+    def test_scalar_state_variable_gains_channel_axis(
+            self,
+            tmp_path: object,
+    ) -> None:
+        r'''A channel-less state variable gains a leading axis.'''
+        path = str(tmp_path / "t.zarr")
+        n_times, n_lat, n_lon = 3, 4, 8
+        rng = np.random.default_rng(seed=19921225)
+        data = rng.normal(
+            size=(n_times, n_lat, n_lon),
+        ).astype(np.float32)
+        times = np.array([
+            np.datetime64("2020-01-01")
+            + np.timedelta64(6 * i, "h")
+            for i in range(n_times)
+        ])
+        xr.Dataset(
+            {"q": (("time", "latitude", "longitude"), data)},
+            coords={
+                "time": times,
+                "latitude": np.linspace(-90, 90, n_lat),
+                "longitude": np.linspace(0, 360, n_lon),
+            },
+        ).to_zarr(path, mode="w", consolidated=True)
+
+        ds = _make_ds(
+            path,
+            state_variables=["q"],
+            n_steps=2,
+            n_step_size=1,
+        )
+        samp = ds[0]
+
+        assert samp["input"].shape == (1, n_lat, n_lon)
+        assert samp["residual"].shape == (1, n_lat, n_lon)

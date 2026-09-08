@@ -7,7 +7,10 @@ import pytest
 import torch
 
 # Internal modules
-from ocean_flow.modules.forecast_module import ForecastModule
+from ocean_flow.modules.forecast_module import (
+    ForecastModule,
+    FlowMatchingForecastModule,
+)
 from ocean_flow.modules.train_module import TrainingModule
 from ocean_flow.modules.utils import (
     preprocess_data,
@@ -55,6 +58,19 @@ class _ForecastIncrementModule(ForecastModule):
         )
         levels = states_levels[:, -1] + 10.0
         return surface, levels
+
+
+class _TimeConditionedVelocityNetwork(torch.nn.Module):
+    r'''Velocity network accepting a positional time tensor.'''
+
+    def forward(
+            self,
+            x: torch.Tensor,
+            t: torch.Tensor | None = None,
+            **kwargs: object,
+    ) -> torch.Tensor:
+        r'''Return the first input channel as the velocity.'''
+        return x[:, :1]
 
 
 class _LatentRecorder(torch.nn.Module):
@@ -201,6 +217,17 @@ class _BaseAuxTrainingModule(TrainingModule):
     ) -> dict:
         r'''Return dummy loss.'''
         return {"loss": torch.tensor(1.0)}
+
+
+class _DefaultTrainingModule(TrainingModule):
+    r'''Concrete TrainingModule that uses the base estimate_loss logic.'''
+
+    def estimate_loss(
+            self,
+            batch: dict,
+            prefix: str = "train",
+    ) -> dict:
+        return super().estimate_loss(batch, prefix)
 
 
 class _MissingKeysModel(torch.nn.Module):
@@ -383,6 +410,103 @@ class TestForecastModuleFunctional:
         assert out_surf[0, 0, 0, 0].item() == pytest.approx(5.0)
         assert out_levels[0, 0, 0, 0, 0].item() == pytest.approx(15.0)
 
+    def test_flow_matching_forward_accepts_named_state(self) -> None:
+        r'''FlowMatchingForecastModule accepts a state keyword and returns one time step.'''
+        module = FlowMatchingForecastModule(
+            network=_TimeConditionedVelocityNetwork(),
+            pre_pipeline=PrePipeline(states_surface=IdentityPreModule()),
+            post_pipeline=PostPipeline(states_surface=IdentityPostModule()),
+            n_int=1,
+            n_ensemble=1,
+        )
+        state = torch.zeros((2, 1, 4, 8))
+
+        out = module.forward(q=state)
+
+        assert out.shape == (2, 1, 1, 4, 8)
+
+    def test_flow_matching_forward_accepts_ensemble_state(self) -> None:
+        r'''FlowMatchingForecastModule flattens a 5D (E,B,C,H,W) state.'''
+        module = FlowMatchingForecastModule(
+            network=_TimeConditionedVelocityNetwork(),
+            pre_pipeline=PrePipeline(states_surface=IdentityPreModule()),
+            post_pipeline=PostPipeline(states_surface=IdentityPostModule()),
+            n_int=1,
+            n_ensemble=1,
+        )
+        state = torch.zeros((3, 2, 1, 4, 8))
+
+        out = module.forward(q=state)
+
+        assert out.shape == (6, 1, 1, 4, 8)
+
+    def test_sample_residual_with_flow_accepts_5d_condition(
+            self,
+    ) -> None:
+        r'''sample_residual_with_flow handles a 5D condition directly.'''
+        module = FlowMatchingForecastModule(
+            network=_TimeConditionedVelocityNetwork(),
+            pre_pipeline=PrePipeline(states_surface=IdentityPreModule()),
+            post_pipeline=PostPipeline(states_surface=IdentityPostModule()),
+            n_int=2,
+            n_ensemble=1,
+        )
+        condition = torch.zeros((3, 2, 1, 4, 8))
+
+        residual = module.sample_residual_with_flow(condition)
+
+        assert residual.shape == (3, 2, 1, 4, 8)
+
+    def test_flow_matching_forward_accepts_positional_state(
+            self,
+    ) -> None:
+        r'''forward accepts state positionally without kwargs.'''
+        module = FlowMatchingForecastModule(
+            network=_TimeConditionedVelocityNetwork(),
+            pre_pipeline=PrePipeline(states_surface=IdentityPreModule()),
+            post_pipeline=PostPipeline(states_surface=IdentityPostModule()),
+            n_int=1,
+            n_ensemble=1,
+        )
+        state = torch.zeros((2, 1, 4, 8))
+
+        out = module.forward(state)
+
+        assert out.shape == (2, 1, 1, 4, 8)
+
+    def test_flow_matching_forward_skips_unsqueeze_when_already_5d(
+            self,
+    ) -> None:
+        r'''forward returns next_state unchanged when already 5D.'''
+
+        class _ExpandingPostModule(torch.nn.Module):
+            r'''Post module that inserts a lead-time dim itself.'''
+
+            def forward(
+                    self,
+                    prediction: torch.Tensor,
+                    initial: torch.Tensor,
+                    *args: object,
+                    **kwargs: object,
+            ) -> torch.Tensor:
+                r'''Return prediction with a singleton dim at axis 1.'''
+                return prediction.unsqueeze(1)
+
+        module = FlowMatchingForecastModule(
+            network=_TimeConditionedVelocityNetwork(),
+            pre_pipeline=PrePipeline(states_surface=IdentityPreModule()),
+            post_pipeline=PostPipeline(
+                states_surface=_ExpandingPostModule(),
+            ),
+            n_int=1,
+            n_ensemble=1,
+        )
+        state = torch.zeros((2, 1, 4, 8))
+
+        out = module.forward(q=state)
+
+        assert out.shape == (2, 1, 1, 4, 8)
+
 
 class TestModulesFunctional:
     r'''End-to-end tests for modules package.'''
@@ -395,6 +519,78 @@ class TestModulesFunctional:
         )
         assert module.loss_prefixes == ["train"]
         assert "loss" in out
+
+    def test_training_estimate_loss_uses_pipelines(
+            self,
+            monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        r'''estimate_loss applies pre_pipeline and post_pipeline logic.'''
+        monkeypatch.setattr(
+            TrainingModule,
+            "_assert_normalized",
+            staticmethod(lambda *args, **kwargs: None),
+        )
+
+        class _ScalingPreModule(torch.nn.Module):
+            def __init__(self, factor: float) -> None:
+                super().__init__()
+                self.factor = factor
+
+            def forward(
+                    self,
+                    in_tensor: torch.Tensor,
+                    *args: object,
+                    **kwargs: object,
+            ) -> torch.Tensor:
+                return in_tensor * self.factor
+
+        class _CaptureNetwork(torch.nn.Module):
+            def __init__(self) -> None:
+                super().__init__()
+                self.last_input: torch.Tensor | None = None
+
+            def forward(
+                    self,
+                    x: torch.Tensor,
+                    *args: object,
+                    **kwargs: object,
+            ) -> torch.Tensor:
+                self.last_input = x
+                return torch.zeros(
+                    x.shape[0], 1, x.shape[-2], x.shape[-1],
+                    device=x.device,
+                    dtype=x.dtype,
+                )
+
+        recorder = _LatentRecorder()
+        module = _DefaultTrainingModule(
+            network=_CaptureNetwork(),
+            pre_pipeline=PrePipeline(
+                states_surface=_ScalingPreModule(2.0),
+            ),
+            post_pipeline=PostPipeline(
+                states_surface=recorder,
+            ),
+            ema_rate=0.0,
+        )
+
+        state = torch.ones((2, 1, 4, 8), dtype=torch.float32)
+        residual = torch.full((2, 1, 4, 8), 2.0, dtype=torch.float32)
+        batch = {"input": state, "residual": residual}
+
+        out = module.estimate_loss(batch, prefix="train")
+
+        assert "loss" in out
+        assert module.network.last_input is not None
+        torch.testing.assert_close(
+            module.network.last_input[:, 1:],
+            state * 2.0,
+        )
+
+        expected_target = state + residual
+        recorded_target, recorded_initial = recorder.calls[0]
+        torch.testing.assert_close(recorded_target, expected_target)
+        torch.testing.assert_close(recorded_initial, state)
 
     def test_validation_step_calls_both(
             self,
@@ -702,6 +898,16 @@ class TestModulesFunctional:
 class TestModulesUnittest:
     r'''Isolated unit tests for module internals.'''
 
+    def test_assert_normalized_accepts_normalized_tensor(
+            self,
+    ) -> None:
+        r'''_assert_normalized passes for mean~0/std~1 tensors.'''
+        rng = torch.Generator().manual_seed(19921225)
+        raw = torch.randn((1000,), generator=rng)
+        tensor = (raw - raw.mean()) / raw.std()
+
+        TrainingModule._assert_normalized(tensor, "latent")
+
     def test_on_train_batch_end_ema(self) -> None:
         r'''EMA network updates after train batch end.'''
         module = _build_training_module(
@@ -797,6 +1003,107 @@ class TestForecastModuleErrors:
         with pytest.raises(NotImplementedError):
             ForecastModule.forward(module)
 
+    def test_flow_matching_init_raises_on_nonpositive_n_int(
+            self,
+    ) -> None:
+        r'''__init__ raises ValueError for n_int <= 0.'''
+        with pytest.raises(ValueError, match="n_int"):
+            FlowMatchingForecastModule(
+                network=_TimeConditionedVelocityNetwork(),
+                pre_pipeline=PrePipeline(
+                    states_surface=IdentityPreModule(),
+                ),
+                post_pipeline=PostPipeline(
+                    states_surface=IdentityPostModule(),
+                ),
+                n_int=0,
+            )
+
+    def test_flow_matching_init_raises_on_nonpositive_n_ensemble(
+            self,
+    ) -> None:
+        r'''__init__ raises ValueError for n_ensemble <= 0.'''
+        with pytest.raises(ValueError, match="n_ensemble"):
+            FlowMatchingForecastModule(
+                network=_TimeConditionedVelocityNetwork(),
+                pre_pipeline=PrePipeline(
+                    states_surface=IdentityPreModule(),
+                ),
+                post_pipeline=PostPipeline(
+                    states_surface=IdentityPostModule(),
+                ),
+                n_ensemble=0,
+            )
+
+    def test_sample_residual_raises_on_invalid_ndim(self) -> None:
+        r'''sample_residual_with_flow rejects a non-4D/5D tensor.'''
+        module = FlowMatchingForecastModule(
+            network=_TimeConditionedVelocityNetwork(),
+            pre_pipeline=PrePipeline(
+                states_surface=IdentityPreModule(),
+            ),
+            post_pipeline=PostPipeline(
+                states_surface=IdentityPostModule(),
+            ),
+        )
+        condition = torch.zeros((4, 8))
+
+        with pytest.raises(ValueError, match="Expected condition"):
+            module.sample_residual_with_flow(condition)
+
+    def test_flow_matching_forward_raises_without_state(
+            self,
+    ) -> None:
+        r'''forward raises when no state kwarg is given.'''
+        module = FlowMatchingForecastModule(
+            network=_TimeConditionedVelocityNetwork(),
+            pre_pipeline=PrePipeline(
+                states_surface=IdentityPreModule(),
+            ),
+            post_pipeline=PostPipeline(
+                states_surface=IdentityPostModule(),
+            ),
+        )
+
+        with pytest.raises(ValueError, match="exactly one"):
+            module.forward()
+
+    def test_flow_matching_forward_raises_on_state_and_kwargs(
+            self,
+    ) -> None:
+        r'''forward raises when state and kwargs are both given.'''
+        module = FlowMatchingForecastModule(
+            network=_TimeConditionedVelocityNetwork(),
+            pre_pipeline=PrePipeline(
+                states_surface=IdentityPreModule(),
+            ),
+            post_pipeline=PostPipeline(
+                states_surface=IdentityPostModule(),
+            ),
+        )
+        state = torch.zeros((2, 1, 4, 8))
+
+        with pytest.raises(ValueError, match="both a positional"):
+            module.forward(state, q=state)
+
+    def test_flow_matching_forward_raises_on_invalid_ndim(
+            self,
+    ) -> None:
+        r'''forward rejects a non-4D/5D state tensor.'''
+        module = FlowMatchingForecastModule(
+            network=_TimeConditionedVelocityNetwork(),
+            pre_pipeline=PrePipeline(
+                states_surface=IdentityPreModule(),
+            ),
+            post_pipeline=PostPipeline(
+                states_surface=IdentityPostModule(),
+            ),
+        )
+        state = torch.zeros((4, 8))
+
+        with pytest.raises(ValueError, match="Expected state"):
+            module.forward(q=state)
+
 
 class TestModulesErrors:
     r'''Error condition tests for modules package.'''
@@ -834,6 +1141,27 @@ class TestModulesErrors:
             ),
         ):
             split_wd_params(model)
+
+    def test_assert_normalized_raises_on_non_finite(self) -> None:
+        r'''_assert_normalized raises for non-finite values.'''
+        tensor = torch.tensor([0.0, float("nan"), 0.0])
+
+        with pytest.raises(AssertionError, match="non-finite"):
+            TrainingModule._assert_normalized(tensor, "latent")
+
+    def test_assert_normalized_raises_on_bad_mean(self) -> None:
+        r'''_assert_normalized raises when mean is far from 0.'''
+        tensor = torch.full((100,), 5.0)
+
+        with pytest.raises(AssertionError, match="mean is not close"):
+            TrainingModule._assert_normalized(tensor, "latent")
+
+    def test_assert_normalized_raises_on_bad_std(self) -> None:
+        r'''_assert_normalized raises when std is far from 1.'''
+        tensor = torch.zeros((100,))
+
+        with pytest.raises(AssertionError, match="std is not close"):
+            TrainingModule._assert_normalized(tensor, "latent")
 
 
 # -----------------------------------------------------------
