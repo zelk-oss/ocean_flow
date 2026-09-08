@@ -33,6 +33,7 @@ dask:
   dashboard_address: null  # Dask dashboard address (None to disable)
   n_prefetch_init: 1  # Number of init state chunks to prefetch
   n_prefetch_forcing: 3  # Number of forcing chunks to prefetch
+  n_persist_flush: 128  # Max in-flight write futures before blocking
 
 # Model checkpoint path
 ckpt_path: "data/models/${exp_name}/best.ckpt" # Path to model checkpoint for forecasting (null to skip loading)

@@ -217,6 +217,7 @@ def run_local_forecast(
             dp_world_size=dp_world_size,
             n_prefetch_init=cfg.dask.n_prefetch_init,
             n_prefetch_forcing=cfg.dask.n_prefetch_forcing,
+            n_persist_flush=cfg.dask.n_persist_flush,
         )
 
     fabric.barrier()

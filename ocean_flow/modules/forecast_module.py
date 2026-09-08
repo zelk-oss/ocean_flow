@@ -103,6 +103,12 @@ class FlowMatchingForecastModule(ForecastModule):
 
     and a pseudo-time tensor t, and to return the velocity field.
 
+    Ensemble spread is produced entirely upstream: ``ForecastModel``
+    and ``InputReader`` repeat the same initial condition across
+    ``ensemble_size`` batch rows, and each row receives an
+    independent noise draw in :py:meth:`sample_residual_with_flow`.
+    This module has no ensemble mechanism of its own.
+
     Parameters
     ----------
     network : torch.nn.Module
@@ -117,9 +123,6 @@ class FlowMatchingForecastModule(ForecastModule):
         increment * res_std + res_mean in the old script.
     n_int : int
         Number of Euler integration steps used to sample the flow.
-    n_ensemble : int
-        Number of stochastic ensemble members to generate when the input
-        has no ensemble dimension.
     """
 
     def __init__(
@@ -128,7 +131,6 @@ class FlowMatchingForecastModule(ForecastModule):
         pre_pipeline: PrePipeline,
         post_pipeline: PostPipeline,
         n_int: int = 20,
-        n_ensemble: int = 1,
     ) -> None:
         super().__init__(
             network=network,
@@ -139,53 +141,39 @@ class FlowMatchingForecastModule(ForecastModule):
         if n_int <= 0:
             raise ValueError(f"n_int must be positive, got {n_int}.")
 
-        if n_ensemble <= 0:
-            raise ValueError(f"n_ensemble must be positive, got {n_ensemble}.")
-
         self.n_int = n_int
-        self.n_ensemble = n_ensemble
 
-    def sample_residual_with_flow(self, condition: torch.Tensor) -> torch.Tensor:
+    def sample_residual_with_flow(
+            self,
+            condition: torch.Tensor,
+    ) -> torch.Tensor:
         r"""
         Sample one residual from the learned conditional flow.
 
         Parameters
         ----------
         condition : torch.Tensor
-            Normalized conditioning state.
-
-            Expected shape either:
-
-                (B, C, H, W)
-
-            or:
-
-                (E, B, C, H, W)
+            Normalized conditioning state, shape (B, C, H, W).
 
         Returns
         -------
         torch.Tensor
-            Sampled normalized residual with the same shape as ``condition``.
+            Sampled normalized residual, shape (B, C, H, W).
+
+        Raises
+        ------
+        ValueError
+            If ``condition`` does not have 4 dimensions.
         """
 
-        if condition.ndim == 4:
-            B, C, H, W = condition.shape
-            flat_condition = condition
-            dynamics = torch.randn_like(flat_condition)
-            n_samples = B
-
-        elif condition.ndim == 5:
-            E, B, C, H, W = condition.shape
-            flat_condition = condition.reshape(E * B, C, H, W)
-            dynamics = torch.randn_like(flat_condition)
-            n_samples = E * B
-
-        else:
+        if condition.ndim != 4:
             raise ValueError(
-                "Expected condition with shape (B, C, H, W) or "
-                f"(E, B, C, H, W), got shape {tuple(condition.shape)}."
+                "Expected condition with shape (B, C, H, W), "
+                f"got shape {tuple(condition.shape)}."
             )
 
+        n_samples = condition.shape[0]
+        dynamics = torch.randn_like(condition)
         delta_t = 1.0 / self.n_int
 
         for i in range(self.n_int):
@@ -196,51 +184,61 @@ class FlowMatchingForecastModule(ForecastModule):
                 dtype=condition.dtype,
             )
 
-            model_input = torch.cat([dynamics, flat_condition], dim=1)
+            model_input = torch.cat([dynamics, condition], dim=1)
             velocity = self.network(model_input, t)
 
             dynamics = dynamics + delta_t * velocity
 
-        if condition.ndim == 4:
-            return dynamics.reshape(B, C, H, W)
-
-        return dynamics.reshape(E, B, C, H, W)
+        return dynamics
 
     def forward(
         self,
         state: torch.Tensor | None = None,
         **kwargs: torch.Tensor,
-    ) -> torch.Tensor:
+    ) -> tuple[torch.Tensor]:
         r"""
         Perform one stochastic forecasting step.
 
         Parameters
         ----------
         state : torch.Tensor, optional
-            Current physical state. If not provided, the single tensor
-            contained in ``kwargs`` is used. This supports passing the
-            input variable under a name such as ``q``.
+            Rolling-window state, as delivered by ``ForecastModel``.
+            If not provided, the single tensor contained in
+            ``kwargs`` is used, supporting a named input variable
+            such as ``q``.
 
             Expected shape either:
 
-                (B, C, H, W)
+                (B, n_in_steps, H, W)
 
             or:
 
-                (E, B, C, H, W)
+                (B, n_in_steps, C, H, W)
+
+            Dim 1 is the rolling time-step window (matching
+            ``InputReader``/``ForecastModel``'s convention, not an
+            ensemble axis). Only the last time step conditions the
+            flow. The 4D form is for a channel-less (scalar) state
+            variable such as ``q``.
 
         kwargs : torch.Tensor
             Optional keyword argument containing the single state tensor.
 
         Returns
         -------
-        torch.Tensor
-            Forecasted next state.
+        tuple of torch.Tensor
+            Single-element tuple holding the forecasted next state,
+            shape (B, 1, H, W) or (B, 1, C, H, W) matching the
+            input's channel convention. Wrapped in a tuple because
+            ``ForecastModel`` expects one tensor per state variable.
 
-            If input has shape (B, C, H, W), output has shape
-            (E, B, C, H, W), where E = n_ensemble.
-
-            If input has shape (E, B, C, H, W), output has the same shape.
+        Raises
+        ------
+        ValueError
+            If ``state`` is not passed and ``kwargs`` does not
+            contain exactly one tensor, if both ``state`` and
+            ``kwargs`` are given, or if ``state`` does not have 4 or
+            5 dimensions.
         """
 
         if state is None:
@@ -258,25 +256,33 @@ class FlowMatchingForecastModule(ForecastModule):
 
         if state.ndim not in (4, 5):
             raise ValueError(
-                "Expected state with shape (B, C, H, W) or "
-                f"(E, B, C, H, W), got shape {tuple(state.shape)}."
+                "Expected state with shape (B, n_in_steps, H, W) or "
+                "(B, n_in_steps, C, H, W), got shape "
+                f"{tuple(state.shape)}."
             )
 
+        # Only the last time step conditions the flow.
+        current_state = state[:, -1]
+
+        # Insert a channel axis for channel-less (scalar) variables.
+        added_channel_axis = current_state.ndim == 3
+        if added_channel_axis:
+            current_state = current_state[:, None]
+
         # Normalize the conditioning state.
-        condition = self.pre_pipeline(state)
+        condition = self.pre_pipeline(current_state)
 
         # Sample normalized residual.
         residual = self.sample_residual_with_flow(condition)
 
-        if state.ndim == 5:
-            E, B, C, H, W = state.shape
-            state = state.reshape(E * B, C, H, W)
-            residual = residual.reshape(E * B, C, H, W)
+        # post_pipeline denormalizes the sampled residual and adds
+        # it back to the current state.
+        next_state = self.post_pipeline(residual, current_state)
 
-        # post_pipeline denormalizes the sampled residual and adds it back to state.
-        next_state = self.post_pipeline(residual, state)
+        if added_channel_axis:
+            next_state = next_state[:, 0]
 
-        if next_state.ndim == 4:
-            next_state = next_state.unsqueeze(1)
+        # Insert the n_out_steps=1 axis expected by ForecastModel.
+        next_state = next_state.unsqueeze(1)
 
-        return next_state
+        return (next_state,)

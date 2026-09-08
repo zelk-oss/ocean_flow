@@ -68,6 +68,7 @@ def _make_forecast_cfg(
             "dashboard_address": None,
             "n_prefetch_init": 1,
             "n_prefetch_forcing": 3,
+            "n_persist_flush": 128,
         },
         "io": {
             "data_path": "/tmp/data.zarr",

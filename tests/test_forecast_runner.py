@@ -20,6 +20,7 @@ sys.path.insert(
 # External modules
 import dask
 import dask.array
+import distributed
 import numpy as np
 import pandas as pd
 import pytest
@@ -34,6 +35,7 @@ from ocean_flow.forecast.runner import (
     run_batch,
     initialize_io,
     _count_forecast_batches,
+    _flush_futures,
     _shift_forcing_times,
 )
 from tests.conftest import (
@@ -389,13 +391,17 @@ class TestRunnerFunctional:
         assert writer.write.call_count == 3
         assert reader.load_forcings.call_count == 3
 
-    def test_dask_compute_called_at_end(
+    def test_client_persist_called_per_batch(
             self,
     ) -> None:
-        r'''dask.compute is called with all delayed
-        writes.
+        r'''client.persist called once per batch,
+        dask.compute never called.
         '''
         client = MagicMock()
+        mock_future = MagicMock(spec=distributed.Future)
+        mock_future.done.return_value = False
+        client.persist.return_value = [mock_future]
+
         model = _make_mock_model(n_out_steps=1)
         reader = _make_mock_input_reader(
             use_auxiliary=False,
@@ -403,25 +409,33 @@ class TestRunnerFunctional:
         )
         writer = _make_mock_output_writer()
 
-        config = _make_config_double(
-            n_chunks=1, steps_per_chunk=1,
-        )
+        configs = [
+            _make_config_double(
+                n_chunks=1, steps_per_chunk=1,
+            )
+            for _ in range(3)
+        ]
 
         with patch(
             "ocean_flow"
             ".forecast.runner.dask",
-        ) as mock_dask:
+        ) as mock_dask, patch(
+            "ocean_flow"
+            ".forecast.runner.distributed.wait",
+        ) as mock_wait:
             run_forecast(
                 client=client,
                 model=model,
                 input_reader=reader,
                 output_writer=writer,
-                forecast_configs=[config],
+                forecast_configs=configs,
                 n_prefetch_init=0,
                 n_prefetch_forcing=0,
             )
 
-            mock_dask.compute.assert_called_once()
+        assert client.persist.call_count == 3
+        mock_dask.compute.assert_not_called()
+        mock_wait.assert_called()
 
 
 # -----------------------------------------------------------
@@ -684,11 +698,11 @@ class TestRunnerEdgeCases:
         # load_auxiliary called for all 3 configs
         assert reader.load_auxiliary.call_count == 3
 
-    def test_write_returns_empty_no_compute(
+    def test_write_returns_empty_no_persist_no_wait(
             self,
     ) -> None:
-        r'''When writer returns no delayed, dask.compute
-        is not called.
+        r'''When writer returns no delayed, client.persist
+        and distributed.wait not called.
         '''
         client = MagicMock()
         model = _make_mock_model(n_out_steps=1)
@@ -706,7 +720,10 @@ class TestRunnerEdgeCases:
         with patch(
             "ocean_flow"
             ".forecast.runner.dask",
-        ) as mock_dask:
+        ), patch(
+            "ocean_flow"
+            ".forecast.runner.distributed.wait",
+        ) as mock_wait:
             run_forecast(
                 client=client,
                 model=model,
@@ -717,7 +734,8 @@ class TestRunnerEdgeCases:
                 n_prefetch_forcing=0,
             )
 
-            mock_dask.compute.assert_not_called()
+        client.persist.assert_not_called()
+        mock_wait.assert_not_called()
 
     def test_trajectory_no_trim_when_exact(
             self,
@@ -1279,6 +1297,109 @@ class TestRunnerErrors:
             )
 
         model.advance.assert_not_called()
+
+
+# -----------------------------------------------------------
+# Flush futures tests
+# -----------------------------------------------------------
+
+class TestFlushFuturesUnittest:
+    r'''Unit tests for _flush_futures helper.'''
+
+    def test_prunes_done_futures(self) -> None:
+        r'''Done futures are removed, live ones
+        preserved.
+        '''
+        done_1 = MagicMock()
+        done_1.done.return_value = True
+        done_2 = MagicMock()
+        done_2.done.return_value = True
+        live_1 = MagicMock()
+        live_1.done.return_value = False
+        live_2 = MagicMock()
+        live_2.done.return_value = False
+        pending = [done_1, live_1, done_2, live_2]
+
+        with patch(
+            "ocean_flow"
+            ".forecast.runner.distributed.wait",
+        ) as mock_wait:
+            result = _flush_futures(
+                pending, n_persist_flush=10,
+            )
+
+        assert len(result) == 2
+        assert result[0] is live_1
+        assert result[1] is live_2
+        mock_wait.assert_not_called()
+
+    def test_triggers_wait_at_threshold(self) -> None:
+        r'''distributed.wait called when pending count
+        reaches threshold.
+        '''
+        futures = [
+            MagicMock() for _ in range(3)
+        ]
+        for f in futures:
+            f.done.return_value = False
+
+        with patch(
+            "ocean_flow"
+            ".forecast.runner.distributed.wait",
+        ) as mock_wait:
+            result = _flush_futures(
+                futures, n_persist_flush=3,
+            )
+
+        mock_wait.assert_called_once()
+        args, _ = mock_wait.call_args
+        assert len(args[0]) == len(futures)
+        assert all(
+            a is f for a, f in zip(args[0], futures)
+        )
+        assert result == []
+
+    def test_no_wait_below_threshold(self) -> None:
+        r'''No distributed.wait when below threshold.'''
+        futures = [
+            MagicMock() for _ in range(3)
+        ]
+        for f in futures:
+            f.done.return_value = False
+
+        with patch(
+            "ocean_flow"
+            ".forecast.runner.distributed.wait",
+        ) as mock_wait:
+            result = _flush_futures(
+                futures, n_persist_flush=10,
+            )
+
+        mock_wait.assert_not_called()
+        assert len(result) == len(futures)
+        assert all(r is f for r, f in zip(result, futures))
+
+    @pytest.mark.parametrize(
+        "n_persist_flush", [0, -1],
+    )
+    def test_non_positive_flush_is_noop(
+            self, n_persist_flush: int,
+    ) -> None:
+        r'''Non-positive n_persist_flush returns pending
+        unchanged.
+        '''
+        pending = [MagicMock(), MagicMock()]
+
+        with patch(
+            "ocean_flow"
+            ".forecast.runner.distributed.wait",
+        ) as mock_wait:
+            result = _flush_futures(
+                pending, n_persist_flush=n_persist_flush,
+            )
+
+        assert result is pending
+        mock_wait.assert_not_called()
 
 
 # -----------------------------------------------------------

@@ -3,10 +3,12 @@ r'''Tests for src/modules package – ForecastModule,
 TrainingModule, and utility functions.'''
 
 # External modules
+import numpy as np
 import pytest
 import torch
 
 # Internal modules
+from ocean_flow.forecast.forecast_model import ForecastModel
 from ocean_flow.modules.forecast_module import (
     ForecastModule,
     FlowMatchingForecastModule,
@@ -22,6 +24,7 @@ from tests.conftest import (
     DummyNetwork,
     IdentityPostModule,
     IdentityPreModule,
+    make_fabric,
 )
 
 
@@ -411,51 +414,84 @@ class TestForecastModuleFunctional:
         assert out_levels[0, 0, 0, 0, 0].item() == pytest.approx(15.0)
 
     def test_flow_matching_forward_accepts_named_state(self) -> None:
-        r'''FlowMatchingForecastModule accepts a state keyword and returns one time step.'''
+        r'''forward accepts a channel-less state keyword, returns (tensor,).'''
         module = FlowMatchingForecastModule(
             network=_TimeConditionedVelocityNetwork(),
             pre_pipeline=PrePipeline(states_surface=IdentityPreModule()),
             post_pipeline=PostPipeline(states_surface=IdentityPostModule()),
             n_int=1,
-            n_ensemble=1,
         )
         state = torch.zeros((2, 1, 4, 8))
 
         out = module.forward(q=state)
 
-        assert out.shape == (2, 1, 1, 4, 8)
+        assert isinstance(out, tuple)
+        assert len(out) == 1
+        assert out[0].shape == (2, 1, 4, 8)
 
-    def test_flow_matching_forward_accepts_ensemble_state(self) -> None:
-        r'''FlowMatchingForecastModule flattens a 5D (E,B,C,H,W) state.'''
+    def test_flow_matching_forward_accepts_channel_state(self) -> None:
+        r'''forward accepts a (B, n_in_steps, C, H, W) state.'''
         module = FlowMatchingForecastModule(
             network=_TimeConditionedVelocityNetwork(),
             pre_pipeline=PrePipeline(states_surface=IdentityPreModule()),
             post_pipeline=PostPipeline(states_surface=IdentityPostModule()),
             n_int=1,
-            n_ensemble=1,
         )
         state = torch.zeros((3, 2, 1, 4, 8))
 
         out = module.forward(q=state)
 
-        assert out.shape == (6, 1, 1, 4, 8)
+        assert out[0].shape == (3, 1, 1, 4, 8)
 
-    def test_sample_residual_with_flow_accepts_5d_condition(
+    def test_flow_matching_forward_uses_last_time_step(self) -> None:
+        r'''forward conditions the flow on only the last time step.'''
+
+        class _CapturePreModule(torch.nn.Module):
+            r'''Pre module recording the tensor it receives.'''
+
+            def __init__(self) -> None:
+                super().__init__()
+                self.last_input: torch.Tensor | None = None
+
+            def forward(
+                    self,
+                    in_tensor: torch.Tensor,
+                    *args: object,
+                    **kwargs: object,
+            ) -> torch.Tensor:
+                r'''Record and pass through the input unchanged.'''
+                self.last_input = in_tensor
+                return in_tensor
+
+        capture = _CapturePreModule()
+        module = FlowMatchingForecastModule(
+            network=_TimeConditionedVelocityNetwork(),
+            pre_pipeline=PrePipeline(states_surface=capture),
+            post_pipeline=PostPipeline(states_surface=IdentityPostModule()),
+            n_int=1,
+        )
+        state = torch.zeros((2, 3, 4, 8))
+        state[:, -1] = 5.0
+
+        module.forward(q=state)
+
+        torch.testing.assert_close(capture.last_input, state[:, -1:])
+
+    def test_sample_residual_with_flow_returns_matching_shape(
             self,
     ) -> None:
-        r'''sample_residual_with_flow handles a 5D condition directly.'''
+        r'''sample_residual_with_flow returns a (B, C, H, W) residual.'''
         module = FlowMatchingForecastModule(
             network=_TimeConditionedVelocityNetwork(),
             pre_pipeline=PrePipeline(states_surface=IdentityPreModule()),
             post_pipeline=PostPipeline(states_surface=IdentityPostModule()),
             n_int=2,
-            n_ensemble=1,
         )
-        condition = torch.zeros((3, 2, 1, 4, 8))
+        condition = torch.zeros((3, 1, 4, 8))
 
         residual = module.sample_residual_with_flow(condition)
 
-        assert residual.shape == (3, 2, 1, 4, 8)
+        assert residual.shape == (3, 1, 4, 8)
 
     def test_flow_matching_forward_accepts_positional_state(
             self,
@@ -466,46 +502,36 @@ class TestForecastModuleFunctional:
             pre_pipeline=PrePipeline(states_surface=IdentityPreModule()),
             post_pipeline=PostPipeline(states_surface=IdentityPostModule()),
             n_int=1,
-            n_ensemble=1,
         )
         state = torch.zeros((2, 1, 4, 8))
 
         out = module.forward(state)
 
-        assert out.shape == (2, 1, 1, 4, 8)
+        assert out[0].shape == (2, 1, 4, 8)
 
-    def test_flow_matching_forward_skips_unsqueeze_when_already_5d(
+    def test_flow_matching_module_compatible_with_forecast_model(
             self,
     ) -> None:
-        r'''forward returns next_state unchanged when already 5D.'''
-
-        class _ExpandingPostModule(torch.nn.Module):
-            r'''Post module that inserts a lead-time dim itself.'''
-
-            def forward(
-                    self,
-                    prediction: torch.Tensor,
-                    initial: torch.Tensor,
-                    *args: object,
-                    **kwargs: object,
-            ) -> torch.Tensor:
-                r'''Return prediction with a singleton dim at axis 1.'''
-                return prediction.unsqueeze(1)
-
+        r'''forward's tuple/shape output satisfies ForecastModel.'''
         module = FlowMatchingForecastModule(
             network=_TimeConditionedVelocityNetwork(),
             pre_pipeline=PrePipeline(states_surface=IdentityPreModule()),
-            post_pipeline=PostPipeline(
-                states_surface=_ExpandingPostModule(),
-            ),
+            post_pipeline=PostPipeline(states_surface=IdentityPostModule()),
             n_int=1,
-            n_ensemble=1,
         )
-        state = torch.zeros((2, 1, 4, 8))
+        forecast_model = ForecastModel(
+            module=module,
+            fabric=make_fabric(),
+            dtype=torch.float32,
+            compile=False,
+        )
+        forecast_model.set_state({
+            "q": np.zeros((2, 1, 4, 8), dtype=np.float32),
+        })
 
-        out = module.forward(q=state)
+        trajectory = forecast_model.advance(n=1)
 
-        assert out.shape == (2, 1, 1, 4, 8)
+        assert trajectory["q"].shape == (2, 1, 4, 8)
 
 
 class TestModulesFunctional:
@@ -1019,24 +1045,8 @@ class TestForecastModuleErrors:
                 n_int=0,
             )
 
-    def test_flow_matching_init_raises_on_nonpositive_n_ensemble(
-            self,
-    ) -> None:
-        r'''__init__ raises ValueError for n_ensemble <= 0.'''
-        with pytest.raises(ValueError, match="n_ensemble"):
-            FlowMatchingForecastModule(
-                network=_TimeConditionedVelocityNetwork(),
-                pre_pipeline=PrePipeline(
-                    states_surface=IdentityPreModule(),
-                ),
-                post_pipeline=PostPipeline(
-                    states_surface=IdentityPostModule(),
-                ),
-                n_ensemble=0,
-            )
-
     def test_sample_residual_raises_on_invalid_ndim(self) -> None:
-        r'''sample_residual_with_flow rejects a non-4D/5D tensor.'''
+        r'''sample_residual_with_flow rejects a non-4D tensor.'''
         module = FlowMatchingForecastModule(
             network=_TimeConditionedVelocityNetwork(),
             pre_pipeline=PrePipeline(

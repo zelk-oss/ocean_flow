@@ -24,6 +24,7 @@ from unittest.mock import MagicMock, call, patch
 # External modules
 import dask
 import dask.array
+import distributed
 import numpy as np
 import pandas as pd
 import pytest
@@ -699,16 +700,19 @@ class TestPhase3RunnerNoFutures:
             "_submit_states_aux should be deleted"
         )
 
-    def test_run_forecast_calls_dask_compute(
+    def test_run_forecast_persists_and_waits(
         self,
     ) -> None:
-        r'''run_forecast batch-computes all Delayed at end.'''
+        r'''run_forecast persists Delayed writes, waits at end.'''
         from ocean_flow.forecast.runner import (
             run_forecast,
         )
 
         # Arrange
         client = MagicMock()
+        mock_future = MagicMock(spec=distributed.Future)
+        mock_future.done.return_value = False
+        client.persist.return_value = [mock_future]
         model = _make_mock_model(n_out_steps=1)
         reader = MagicMock()
         reader.use_forcings = False
@@ -740,7 +744,10 @@ class TestPhase3RunnerNoFutures:
         with patch(
             "ocean_flow"
             ".forecast.runner.dask"
-        ) as mock_dask:
+        ) as mock_dask, patch(
+            "ocean_flow"
+            ".forecast.runner.distributed.wait"
+        ) as mock_wait:
             run_forecast(
                 client=client,
                 model=model,
@@ -752,7 +759,9 @@ class TestPhase3RunnerNoFutures:
             )
 
         # Assert
-        mock_dask.compute.assert_called_once()
+        client.persist.assert_called_once()
+        mock_dask.compute.assert_not_called()
+        mock_wait.assert_called_once()
 
     def test_run_forecast_uses_persist(
         self,
@@ -886,12 +895,12 @@ class TestPhase3RunForecastBatchSignature:
 # -----------------------------------------------------------
 
 class TestPhase3RunForecastCollectsDelayed:
-    r'''run_forecast collects Delayed and batch-computes.'''
+    r'''run_forecast persists Delayed writes from each batch.'''
 
-    def test_run_forecast_collects_delayed_from_batch(
+    def test_run_forecast_persists_delayed_from_batch(
         self,
     ) -> None:
-        r'''Delayed objects from write are collected.'''
+        r'''Delayed objects from write are persisted.'''
 
         from ocean_flow.forecast.runner import (
             run_forecast,
@@ -899,6 +908,9 @@ class TestPhase3RunForecastCollectsDelayed:
 
         # Arrange
         client = MagicMock()
+        mock_future = MagicMock(spec=distributed.Future)
+        mock_future.done.return_value = False
+        client.persist.return_value = [mock_future]
         model = _make_mock_model(n_out_steps=1)
         reader = MagicMock()
         reader.use_forcings = False
@@ -932,7 +944,10 @@ class TestPhase3RunForecastCollectsDelayed:
         with patch(
             "ocean_flow"
             ".forecast.runner.dask"
-        ) as mock_dask:
+        ) as mock_dask, patch(
+            "ocean_flow"
+            ".forecast.runner.distributed.wait"
+        ) as mock_wait:
             run_forecast(
                 client=client,
                 model=model,
@@ -943,8 +958,12 @@ class TestPhase3RunForecastCollectsDelayed:
                 n_prefetch_forcing=0,
             )
 
-            # Assert -- dask.compute called with delayed
-            mock_dask.compute.assert_called_once()
+        # Assert -- client.persist called with delayed
+        client.persist.assert_called_once_with(
+            [mock_delayed],
+        )
+        mock_dask.compute.assert_not_called()
+        mock_wait.assert_called_once()
 
 
 # -----------------------------------------------------------

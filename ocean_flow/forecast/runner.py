@@ -222,6 +222,42 @@ def _count_forecast_batches(
     return math.ceil(n_total / batch_size)
 
 
+def _flush_futures(
+        pending: list[distributed.Future],
+        n_persist_flush: int,
+) -> list[distributed.Future]:
+    r'''
+    Prune completed futures and block if needed.
+
+    Removes finished futures from the pending list. When
+    the number of remaining in-flight futures reaches or
+    exceeds ``n_persist_flush``, blocks until all complete
+    and returns an empty list. If ``n_persist_flush <= 0``,
+    returns the list unchanged (no-op).
+
+    Parameters
+    ----------
+    pending : list of distributed.Future
+        Currently in-flight write futures.
+    n_persist_flush : int
+        Maximum in-flight futures before blocking.
+
+    Returns
+    -------
+    list of distributed.Future
+        Remaining uncompleted futures.
+    '''
+    if n_persist_flush <= 0:
+        return pending
+    pending = [f for f in pending if not f.done()]
+    if len(pending) >= n_persist_flush:
+        distributed.wait(pending)
+        for f in pending:
+            f.result()
+        pending = []
+    return pending
+
+
 def _shift_forcing_times(
         config: ForecastConfig,
         chunk: pd.TimedeltaIndex,
@@ -267,17 +303,20 @@ def run_forecast(
         n_prefetch_forcing: int = 3,
         dp_rank: int = 0,
         dp_world_size: int = 1,
+        n_persist_flush: int = 128,
 ) -> None:
     r'''
     Run the forecast loop with persist-based prefetch.
 
     Uses :class:`PrefetchIterator` to overlap IO with
     inference. States and auxiliary data are prefetched
-    ahead of consumption. All Delayed write objects are
-    batch-computed at the end. When running with data
-    parallelism, each worker processes a strided subset
-    of the configs based on ``dp_rank`` and
-    ``dp_world_size``.
+    ahead of consumption. Write objects are persisted per
+    batch via ``client.persist`` and in-flight futures
+    are flushed when the count reaches
+    ``n_persist_flush``. Remaining futures are waited on
+    before returning. When running with data parallelism,
+    each worker processes a strided subset of the configs
+    based on ``dp_rank`` and ``dp_world_size``.
 
     Parameters
     ----------
@@ -302,6 +341,9 @@ def run_forecast(
     dp_world_size : int, optional
         Total number of data-parallel workers. Default
         is 1.
+    n_persist_flush : int, optional
+        Maximum in-flight write futures before flushing.
+        Default is 128.
     '''
     configs = list(forecast_configs)
     configs = configs[dp_rank::dp_world_size]
@@ -326,7 +368,7 @@ def run_forecast(
         load_fns, n_prefetch=n_prefetch_init,
     )
 
-    all_delayed: List = []
+    pending_futures: List[distributed.Future] = []
     progress_configs = tqdm(
         configs,
         total=len(configs),
@@ -346,10 +388,19 @@ def run_forecast(
             aux_ds=aux_ds,
             n_prefetch_forcing=n_prefetch_forcing,
         )
-        all_delayed.extend(batch_delayed)
+        if batch_delayed:
+            new_futures = client.persist(batch_delayed)
+            if not isinstance(new_futures, (list, tuple)):
+                new_futures = [new_futures]
+            pending_futures.extend(new_futures)
+            pending_futures = _flush_futures(
+                pending_futures, n_persist_flush,
+            )
 
-    if all_delayed:
-        dask.compute(*all_delayed)
+    if pending_futures:
+        distributed.wait(pending_futures)
+        for f in pending_futures:
+            f.result()
 
 
 def run_batch(
