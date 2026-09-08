@@ -1,19 +1,19 @@
 ---
 name: forecast-model
 description: |
-  Run model forecasting for this repository using the `scripts/forecast.py` entrypoint.
+  Run model forecasting for this repository using the `flow-forecast` entrypoint.
   This skill launches forecasting under the `ocean_flow` conda environment and
   keeps checking until the forecasting process exits.
 
   Trigger this skill when the user asks for a forecast run, a forecasting experiment, or
-  when they share a command like `python scripts/forecast.py ...` and want it executed.
+  when they share a command like `flow-forecast ...` and want it executed.
 ---
 
 # What this skill does
 
 This skill is responsible for:
 
-- Running the forecasting entrypoint `scripts/forecast.py` from the repository root.
+- Running the forecasting entrypoint `flow-forecast` from the repository root.
 - Ensuring the run happens inside the `ocean_flow` conda environment.
 - Monitoring the forecasting subprocess and periodically reporting whether it is still running.
 
@@ -24,7 +24,7 @@ command the user provides (or a sensible default) and watches until completion.
 
 Use this skill when the user wants to:
 
-- Run a forecasting experiment (e.g., `python scripts/forecast.py model=era5 ...`).
+- Run a forecasting experiment (e.g., `flow-forecast model=era5 ...`).
 - Start a new forecast and see live progress until completion.
 - Confirm a given forecast command completes successfully (including early failures).
 
@@ -37,7 +37,7 @@ The canonical command is:
 
 ```bash
 cd code
-conda run -n ocean_flow --no-capture-output python scripts/forecast.py <hydra overrides...>
+conda run -n ocean_flow --no-capture-output flow-forecast <hydra overrides...>
 ```
 
 > Note: `conda run` avoids needing to `source activate` and works in non-interactive shells.
@@ -58,7 +58,7 @@ python .claude/skills/run-python/scripts/monitor_python.py \
   --env ocean_flow \
   --cwd code \
   --check-interval 10 \
-  -- python scripts/forecast.py model=era5 +experiments=era5/20260313_era5_posterior_crps \
+  -- flow-forecast model=era5 +experiments=era5/20260313_era5_posterior_crps \
       device=cuda:0 n_ens=16 n_forecast_steps=60
 ```
 
@@ -77,7 +77,7 @@ python .claude/skills/run-python/scripts/monitor_python.py \
   --env ocean_flow \
   --cwd code \
   --check-interval 10 \
-  -- python scripts/forecast.py model=shallow_water +experiments=shallow_water/det_mse \
+  -- flow-forecast model=shallow_water +experiments=shallow_water/det_mse \
       n_ens=2 n_forecast_steps=2 device=cpu
 ```
 

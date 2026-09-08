@@ -1,3 +1,9 @@
+# framework submodules (editable)
+-e ./flow-core
+-e ./flow-train
+-e ./flow-forecast
+-e ./flow-assimilate
+
 # core dependencies
 torch           # install with the appropriate CUDA index URL
 torchvision

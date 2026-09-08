@@ -1,3 +1,24 @@
+[build-system]
+requires = ["setuptools"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "ocean_flow"
+version = "0.1"
+description = "Ocean surface reconstruction with Bayesian flow matching"
+readme = "readme.md"
+requires-python = ">=3.9"
+authors = [{ name = "Chiara Zelco", email = "chiara.zelco@ens.psl.eu" }]
+license = { text = "MIT" }
+dependencies = []
+
+[project.scripts]
+# Run the full test suite: this project plus every pulled flow-* submodule.
+flow-test = "ocean_flow._testing:main"
+
+[tool.setuptools.packages.find]
+include = ["ocean_flow"]
+
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 addopts = "--cov=ocean_flow --cov-report=term-missing --cov-fail-under=100"

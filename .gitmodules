@@ -1,0 +1,12 @@
+[submodule "flow-core"]
+	path = flow-core
+	url = git@github.com:flow-esm/flow-core.git
+[submodule "flow-train"]
+	path = flow-train
+	url = git@github.com:flow-esm/flow-train.git
+[submodule "flow-forecast"]
+	path = flow-forecast
+	url = git@github.com:flow-esm/flow-forecast.git
+[submodule "flow-assimilate"]
+	path = flow-assimilate
+	url = git@github.com:flow-esm/flow-assimilate.git
