@@ -1,8 +1,10 @@
-from .forecast_module import ForecastModule
-from .train_module import TrainingModule
+from .forecast import FlowMatchingForecastModule
+from .training import FlowMatchingTrainingModule
+from .data import FlowMatchingTrainDataModule
 
 
 __all__ = [
-    "ForecastModule",
-    "TrainingModule",
+    "FlowMatchingForecastModule",
+    "FlowMatchingTrainingModule",
+    "FlowMatchingTrainDataModule",
 ]

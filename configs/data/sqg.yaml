@@ -1,4 +1,4 @@
-_target_: ocean_flow.data.TrainDataModule
+_target_: ocean_flow.modules.data.FlowMatchingTrainDataModule
 data_path: /lustre/fsn1/projects/rech/wbg/ukv59en/ocean_flow_data/data
 state_variables:
   - q
