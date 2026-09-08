@@ -4,7 +4,7 @@ defaults:
   - pre_pipeline: pre_normalize_q
   - post_pipeline: post_tendency_q
   - network: unet
-  - forecast_module: flow_matching_forecast
+  - inference_module: flow_matching_forecast
   - _self_
 
 batch_size: 4
@@ -77,7 +77,7 @@ logging_level: INFO
 exp_name: "${now:%Y-%m-%d}_${now:%H-%M-%S}"
 
 # Overwrite network and pipeline configuration to use config groups
-forecast_module:
+inference_module:
   network: ${network}
   pre_pipeline: ${pre_pipeline}
   post_pipeline: ${post_pipeline}

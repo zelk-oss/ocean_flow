@@ -1,8 +1,8 @@
 # configs/pipeline/pre_normalize_q.yaml
 # Applied to the INPUT state s_t before it enters the network
-_target_: ocean_flow.pipelines.PrePipeline
+_target_: flow_core.pre_processing.PrePipeline
 normalize_q:
-  _target_: ocean_flow.pipelines.normalization.PreNormalization
+  _target_: flow_core.pre_processing.normalization.PreNormalization
   mean: [-7.468396e-21]
   std:  [2.937441e-01]
   add_dims: [1, 2]

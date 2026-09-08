@@ -1,10 +1,10 @@
 ---
 name: train-model
 description: |
-  Run model training for this repository by invoking `scripts/train.py` inside the
+  Run model training for this repository by invoking `flow-train` inside the
   `ocean_flow` conda environment and keep monitoring progress until the
   training process exits. Trigger this skill whenever the user asks to start, rerun,
-  or debug a training run (e.g., commands like `python scripts/train.py ...`, or
+  or debug a training run (e.g., commands like `flow-train ...`, or
   requests such as “train the model”, “run training”, “start experiment”, etc.).
 ---
 
@@ -12,7 +12,7 @@ description: |
 
 This skill is responsible for:
 
-- Running the training entrypoint `scripts/train.py` from the repository root.
+- Running the training entrypoint `flow-train` from the repository root.
 - Ensuring the run happens inside the `ocean_flow` conda environment.
 - Monitoring the training subprocess and periodically reporting whether it is still running.
 
@@ -23,7 +23,7 @@ command the user provides (or a sensible default) and watches it to completion.
 
 Use this skill when the user wants to:
 
-- Run model training for an experiment (e.g., `python scripts/train.py model=era5 ...`).
+- Run model training for an experiment (e.g., `flow-train model=era5 ...`).
 - Start a new training run and see live progress until completion.
 - Confirm a given training command completes successfully (including early failures).
 
@@ -36,7 +36,7 @@ The canonical command is:
 
 ```bash
 cd code
-conda run -n ocean_flow --no-capture-output python scripts/train.py <hydra overrides...>
+conda run -n ocean_flow --no-capture-output flow-train <hydra overrides...>
 ```
 
 > Note: `conda run` avoids needing to `source activate` and works in non-interactive shells.
@@ -56,7 +56,7 @@ python .claude/skills/run-python/scripts/monitor_python.py \
   --env ocean_flow \
   --cwd code \
   --check-interval 10 \
-  -- python scripts/train.py model=shallow_water +experiments=shallow_water/det_mse n_epochs=1 device=cpu
+  -- flow-train model=shallow_water +experiments=shallow_water/det_mse n_epochs=1 device=cpu
 ```
 
 This will:
@@ -74,7 +74,7 @@ python .claude/skills/run-python/scripts/monitor_python.py \
   --env ocean_flow \
   --cwd code \
   --check-interval 10 \
-  -- python scripts/train.py model=shallow_water +experiments=shallow_water/det_mse n_epochs=1 device=cpu
+  -- flow-train model=shallow_water +experiments=shallow_water/det_mse n_epochs=1 device=cpu
 ```
 
 # Tips
