@@ -31,6 +31,7 @@ import dask.array as da
 import numpy as np
 import pandas as pd
 import xarray as xr
+import zarr
 
 
 # ---------------------------------------------------------------------------
@@ -89,17 +90,34 @@ def clean_output(path: Path) -> None:
         shutil.rmtree(path)
 
 
+def _source_time_length(path: str) -> int:
+    """
+    Return the declared length of the source zarr's raw `time` array.
+
+    Reads the array directly via zarr, bypassing xarray's Dataset merge
+    validation. Some source runs have a `q` array one (or more) time
+    steps longer than their `time` coordinate array (a pre-existing
+    inconsistency in the archived simulation output, not something this
+    script writes) — opening normally would raise on that mismatch
+    before we get a chance to reconcile it.
+    """
+    return zarr.open_array(f"{path}/time", mode="r").shape[0]
+
+
 def open_source_q(path: str) -> xr.Dataset:
     """
     Open one source run lazily and keep only q.
 
-    u and v are explicitly dropped so xarray does not even build lazy arrays
-    for them.
+    u and v are explicitly dropped so xarray does not even build lazy
+    arrays for them. The `time` coordinate is also dropped at open time
+    (see `_source_time_length`); if `q` has more time steps than the
+    source's `time` array declares, the extra trailing step(s) are
+    dropped from `q` to match.
     """
     ds = xr.open_zarr(
         path,
         chunks={"time": TIME_CHUNK},
-        drop_variables=DROP_VARIABLES,
+        drop_variables=DROP_VARIABLES + ["time"],
     )
 
     if VARIABLE not in ds:
@@ -108,19 +126,33 @@ def open_source_q(path: str) -> xr.Dataset:
             f"Available variables are: {list(ds.data_vars)}"
         )
 
-    return ds[[VARIABLE]]
+    ds = ds[[VARIABLE]]
+
+    time_len = _source_time_length(path)
+    q_len = ds.sizes["time"]
+    if q_len != time_len:
+        n = min(q_len, time_len)
+        print(
+            f"WARNING: {path}: q has {q_len} time steps but the time "
+            f"array has {time_len}; dropping the trailing {q_len - n} "
+            f"extra q step(s) to match."
+        )
+        ds = ds.isel(time=slice(0, n))
+
+    return ds
 
 
 def inspect_source(path: str):
     """
     Inspect one source zarr to recover dimensions, sizes, dtype and coords.
 
-    This opens only metadata and only q.
+    This opens only metadata and only q. See `open_source_q` for the
+    q/time length reconciliation applied here too.
     """
     ds = xr.open_zarr(
         path,
         chunks={},
-        drop_variables=DROP_VARIABLES,
+        drop_variables=DROP_VARIABLES + ["time"],
     )
 
     if VARIABLE not in ds:
@@ -139,7 +171,15 @@ def inspect_source(path: str):
     other_dims = [d for d in source_dims if d != "time"]
     other_sizes = {d: ds.sizes[d] for d in other_dims}
     dtype = q.dtype
-    n_time = ds.sizes["time"]
+
+    time_len = _source_time_length(path)
+    q_len = ds.sizes["time"]
+    n_time = min(q_len, time_len)
+    if q_len != time_len:
+        print(
+            f"WARNING: {path}: q has {q_len} time steps but the time "
+            f"array has {time_len}; using n_time={n_time}."
+        )
 
     other_coords = {}
     for d in other_dims:
@@ -312,12 +352,18 @@ def write_region(
     )
 
 
-def check_compatible_sources(reference_info, path: str) -> None:
+def check_compatible_sources(
+        reference_info,
+        info,
+        path: str,
+) -> None:
     """
     Check that another source run has the same q layout as the reference run.
-    """
-    info = inspect_source(path)
 
+    Time length is intentionally NOT compared here: run0/run1/run2 have
+    different simulation lengths. `main()` takes the minimum `n_time`
+    across all three sources instead of requiring an exact match.
+    """
     if info["source_dims"] != reference_info["source_dims"]:
         raise ValueError(
             f"Source dims mismatch for {path}:\n"
@@ -330,13 +376,6 @@ def check_compatible_sources(reference_info, path: str) -> None:
             f"Spatial/non-time sizes mismatch for {path}:\n"
             f"  reference: {reference_info['other_sizes']}\n"
             f"  current:   {info['other_sizes']}"
-        )
-
-    if info["n_time"] != reference_info["n_time"]:
-        raise ValueError(
-            f"Time length mismatch for {path}:\n"
-            f"  reference: {reference_info['n_time']}\n"
-            f"  current:   {info['n_time']}"
         )
 
 
@@ -356,18 +395,28 @@ def main() -> None:
     other_sizes = ref["other_sizes"]
     other_coords = ref["other_coords"]
     dtype = ref["dtype"]
-    n_time = ref["n_time"]
 
     print("\nReference q metadata:")
     print(f"  source dims: {source_dims}")
     print(f"  other dims:  {other_dims}")
     print(f"  other sizes: {other_sizes}")
     print(f"  dtype:       {dtype}")
-    print(f"  n_time:      {n_time}")
+    print(f"  n_time:      {ref['n_time']}")
 
-    print("\nChecking run0/run1/run2 compatibility...")
+    print("\nChecking run0/run1/run2 compatibility (spatial dims only)...")
+    infos = [ref]
     for path in ZARR_PATHS_TRAINVAL[1:]:
-        check_compatible_sources(ref, path)
+        info = inspect_source(path)
+        check_compatible_sources(ref, info, path)
+        infos.append(info)
+
+    # run0/run1/run2 have different simulation lengths; use the shortest
+    # so every run contributes the same number of ensemble time steps.
+    n_time = min(info["n_time"] for info in infos)
+    print(
+        f"\nUsing common n_time={n_time} across run0/run1/run2 "
+        f"(individual lengths: {[info['n_time'] for info in infos]})"
+    )
 
     n_val = max(1, int(n_time * VAL_FRAC))
     n_train = n_time - n_val
