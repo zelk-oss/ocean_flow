@@ -39,13 +39,13 @@ import zarr
 # ---------------------------------------------------------------------------
 
 ZARR_PATHS_TRAINVAL = [
-    "/lustre/fsn1/projects/rech/wbg/ukv59en/tars_staging/simu_pyqg_512_3_run0_second_moreflush.zarr",
-    "/lustre/fsn1/projects/rech/wbg/ukv59en/tars_staging/simu_pyqg_512_3_run1_second_moreflush.zarr",
-    "/lustre/fsn1/projects/rech/wbg/ukv59en/tars_staging/simu_pyqg_512_3_run2_second_moreflush.zarr",
+    "/lustre/fsn1/projects/rech/wbg/ukv59en/simu_pyqg_512_3_run0_second_moreflush.zarr",
+    "/lustre/fsn1/projects/rech/wbg/ukv59en/simu_pyqg_512_3_run1_second_moreflush.zarr",
+    "/lustre/fsn1/projects/rech/wbg/ukv59en/simu_pyqg_512_3_run2_second_moreflush.zarr",
 ]
 
 ZARR_PATH_TEST = (
-    "/lustre/fsn1/projects/rech/wbg/ukv59en/tars_staging/"
+    "/lustre/fsn1/projects/rech/wbg/ukv59en/"
     "simu_pyqg_512_3_run3_second_moreflush.zarr"
 )
 
